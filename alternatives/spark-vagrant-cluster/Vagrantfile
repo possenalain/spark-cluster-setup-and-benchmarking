@@ -1,0 +1,70 @@
+Vagrant.configure("2") do |config|
+  config.hostmanager.enabled = true 
+  config.hostmanager.manage_host = true
+  config.hostmanager.ignore_private_ip = false
+  config.hostmanager.include_offline = true
+
+  # Base VM settings
+  config.vm.box = "ubuntu/jammy64"
+
+  # Common provision script for all nodes
+  common_provision_script = <<-SHELL
+    SPARK_VERSION=3.4.3
+    apt update -y > /dev/null
+    sed -i '/127.0.2.1.*/d' /etc/hosts
+    apt install -y openjdk-11-jdk python3 python3-pip > /dev/null
+    wget https://downloads.apache.org/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz &> /dev/null
+    tar xvf spark-${SPARK_VERSION}-bin-hadoop3.tgz &> /dev/null
+    mv spark-${SPARK_VERSION}-bin-hadoop3 /usr/local/spark 
+    rm -rf spark-${SPARK_VERSION}-bin-hadoop3.tgz
+    pip3 install pyspark -qv
+    echo 'export SPARK_HOME=/usr/local/spark' >> /home/vagrant/.bashrc
+    echo 'export PATH=$SPARK_HOME/bin:$PATH' >> /home/vagrant/.bashrc
+    echo 'export PYSPARK_PYTHON=/usr/bin/python3' >> /home/vagrant/.bashrc
+    source /home/vagrant/.bashrc
+  SHELL
+
+  # Master node configuration
+  config.vm.define "master" do |master|
+    master.vm.hostname = "master"
+    master.vm.network "private_network", ip: "192.168.56.101"
+    master.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+    end
+    master.vm.provision "shell", inline: <<-SHELL
+      #{common_provision_script}
+      /usr/local/spark/sbin/start-master.sh
+    SHELL
+  end
+
+  # # Worker node configuration
+  (1..2).each do |i|
+    config.vm.define "worker#{i}" do |worker|
+      worker.vm.hostname = "worker#{i}"
+      worker.vm.network "private_network", ip: "192.168.56.10#{i + 1}"
+      worker.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      worker.vm.provision "shell", inline: <<-SHELL
+        #{common_provision_script}
+        /usr/local/spark/sbin/start-worker.sh spark://master:7077
+      SHELL
+    end
+  end
+
+  # # Client node configuration
+  config.vm.define "client" do |client|
+    client.vm.hostname = "client"
+    client.vm.synced_folder "./benchmarks", "/spark-benchmarks"
+    client.vm.network "private_network", ip: "192.168.56.110"
+    client.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+    end
+    client.vm.provision "shell", inline: <<-SHELL
+      #{common_provision_script}
+      cd /spark-benchmarks
+      spark-submit --master spark://master:7077 example.py
+    SHELL
+  end
+end
+
