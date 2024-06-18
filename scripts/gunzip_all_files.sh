@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify the folder containing the .gz files
-DSFOLDER="~/nalain-labs/datasets/enwiki-custom"
+DSFOLDER="${DATASETSDIR}/enwiki-custom"
 
 # Check if the folder exists
 if [ ! -d "$DSFOLDER" ]; then
