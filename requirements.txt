@@ -1,0 +1,6 @@
+pyspark
+ipython
+pandas
+pyarrow
+numpy
+nltk
